@@ -1,0 +1,88 @@
+<!doctype html>
+<!--
+Copyright 2018 The Go Authors. All rights reserved.
+Use of this source code is governed by a BSD-style
+license that can be found in the LICENSE file.
+-->
+<html>
+
+<head>
+	<meta charset="utf-8">
+	<title>Test 01</title>
+</head>
+
+<body>
+	<script src="wasm_exec.js"></script>
+	<script>
+		var initial_value, current_step;
+		var go;
+		var mod, inst;
+
+		if (!WebAssembly.compileStreaming) { // polyfill
+			WebAssembly.compileStreaming = async (resp, importObject) => {
+				const source = await (await resp).arrayBuffer();
+				return await WebAssembly.compile(source, importObject);
+			};
+		}
+
+		WebAssembly.compileStreaming(fetch("mlgo.wasm")).then(res => {
+			mod = res;
+			document.getElementById("runButton").disabled = false;
+		});
+
+		setInterval(reportProgress, 1000);
+
+		function dummy() {
+			// dummy console msg, just to see if js is still runnable
+			console.log("dummy....", Math.random());
+		}
+
+		function reportProgress() {
+			if (!inst) return;
+			if (["step 2", "step 3"].indexOf(current_step) === -1) return;
+
+			const idx = goReportCurrentIndex();
+			console.log("current progress", idx);
+		}
+
+		async function run() {
+			console.clear();
+			initial_value = "initial value is " + Math.random();
+			go = new Go();
+			inst = await WebAssembly.instantiate(mod, go.importObject); // reset instance
+			console.log("instantiated module");
+			await go.run(inst);
+			console.log("go finalized and returned in run(). Resolving promise.");
+		}
+
+		function jsStep01(args) {
+			console.log("jsStep01 called", current_step, args);
+			return "ret 01";
+		}
+
+		async function jsStep02(args) {
+			console.log("jsStep02 called", current_step, args);
+			// now, perform a network call that blocks for some time
+			await fetch("/__sleep__?duration=5s");
+			console.log("fetched remote resource")
+			goResolveStep02();
+			return "ret 02";
+		}
+
+		function jsStep03(args) {
+			console.log("jsStep03 called", current_step, args);
+			return "ret 03";
+		}
+
+		function jsStepFailed() {
+			console.log("jsStepFailed called", current_step);
+		}
+
+	</script>
+
+	<button onClick="run();" id="runButton" disabled>Run</button><br><br>
+	<button onClick="goStopProcessing();" id="stop">Stop</button>
+	<br><br><button onClick="dummy();" id="du">Dummy Button</button><br><br>
+</body>
+
+</html>
